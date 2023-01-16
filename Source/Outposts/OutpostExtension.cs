@@ -15,31 +15,50 @@ namespace Outposts
         public List<SkillDef> DisplaySkills;
         public HistoryEventDef Event;
 
-        [PostToSetings("Outposts.Setting.MinimumPawns", PostToSetingsAttribute.DrawMode.IntSlider, min: 1f, max: 10f, dontShowAt: 0)]
+        [PostToSettings("Outposts.Setting.MinimumPawns", PostToSettingsAttribute.DrawMode.IntSlider, min: 1f, max: 10f, dontShowAt: 0)]
         public int MinPawns;
 
         public ThingDef ProvidedFood;
 
-        [PostToSetings("Outposts.Setting.Range", PostToSetingsAttribute.DrawMode.IntSlider, min: 1f, max: 30f, dontShowAt: -1)]
+        [PostToSettings("Outposts.Setting.Range", PostToSettingsAttribute.DrawMode.IntSlider, min: 1f, max: 30f, dontShowAt: -1)]
         public int Range = -1;
 
         public List<AmountBySkill> RequiredSkills;
         public bool RequiresGrowing;
         public List<ResultOption> ResultOptions;
 
-        [PostToSetings("Outposts.Setting.ProductionTime", PostToSetingsAttribute.DrawMode.Time, dontShowAt: -1)]
+        [PostToSettings("Outposts.Setting.ProductionTime", PostToSettingsAttribute.DrawMode.Time, dontShowAt: -1)]
         public int TicksPerProduction = 15 * 60000;
 
-        [PostToSetings("Outposts.Setting.PackTime", PostToSetingsAttribute.DrawMode.Time)]
+        [PostToSettings("Outposts.Setting.PackTime", PostToSettingsAttribute.DrawMode.Time)]
         public int TicksToPack = 7 * 60000;
 
         public int TicksToSetUp = -1;
 
-        public List<SkillDef> RelevantSkills =>
-            new HashSet<SkillDef>(RequiredSkills.SelectOrEmpty(rq => rq.Skill)
-                    .Concat(ResultOptions.SelectManyOrEmpty(ro => ro.AmountsPerSkills.SelectOrEmpty(aps => aps.Skill).Concat(ro.MinSkills.SelectOrEmpty(ms => ms.Skill))))
-                    .Concat(DisplaySkills.OrEmpty()))
-                .ToList();
+        // Trims duplicates by wrapping HashSet. 
+        public IEnumerable<SkillDef> RelevantSkills => new HashSet<SkillDef>(_RelevantSkills());
+
+        // Will contain duplicates.
+        private IEnumerable<SkillDef> _RelevantSkills()
+        {
+            foreach (var skill in RequiredSkills.OrEmpty())
+            {
+                yield return skill.Skill;
+            }
+
+            foreach (var option in ResultOptions.OrEmpty())
+            {
+                foreach (var skill in option.AmountsPerSkills)
+                {
+                    yield return skill.Skill;
+                }
+
+                foreach (var skill in option.MinAmountsPerSkills)
+                {
+                    yield return skill.Skill;
+                }
+            }
+        }
     }
 
     public class ResultOption
@@ -47,13 +66,17 @@ namespace Outposts
         public int AmountPerPawn;
         public List<AmountBySkill> AmountsPerSkills;
         public int BaseAmount;
-        public List<AmountBySkill> MinSkills;
+        public List<AmountBySkill> MinAmountsPerSkills;
         public ThingDef Thing;
 
-        public int Amount(List<Pawn> pawns) =>
-            Mathf.RoundToInt((BaseAmount + AmountPerPawn * pawns.Count + (AmountsPerSkills?.Sum(x => x.Amount(pawns)) ?? 0)) * OutpostsMod.Settings.ProductionMultiplier);
+        public int Amount(List<Pawn> pawns)
+        {
+            var t0 = AmountsPerSkills?.Sum(x => x.Amount(pawns)) ?? 0;
+            var t1 = BaseAmount + AmountPerPawn * pawns.Count + t0;
+            return Mathf.RoundToInt(t1 * OutpostsMod.Settings.ProductionMultiplier);
+        }
 
-        public IEnumerable<Thing> Make(List<Pawn> pawns) => Thing.Make(Amount(pawns));
+        public IEnumerable<Thing> Make(List<Pawn> pawns) => Thing.MakeResults(Amount(pawns));
         public string Explain(List<Pawn> pawns) => $"{Amount(pawns)}x {Thing.LabelCap}";
     }
 
@@ -74,6 +97,6 @@ namespace Outposts
             Count = ParseHelper.FromString<int>(xmlRoot.FirstChild.Value);
         }
 
-        public int Amount(List<Pawn> pawns) => Count * pawns.Sum(p => p.skills.GetSkill(Skill).Level);
+        public int Amount(List<Pawn> pawns) => Count * pawns.GetCumulativeSkill(Skill);
     }
 }

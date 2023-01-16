@@ -4,74 +4,109 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using RimWorld;
+using RimWorld.Planet;
 using UnityEngine;
 using Verse;
-using Verse.AI;
 
 namespace Outposts
 {
     public class OutpostsMod : Mod
     {
-        public static List<WorldObjectDef> Outposts;
-        public static Harmony Harm;
-        public static OutpostsSettings Settings;
+        public static Harmony Harm = new("vanillaexpanded.outposts");
+        public static OutpostsModSettings Settings;
+        public static List<WorldObjectDef> OutpostDefs;
+
         private static Dictionary<Type, List<FieldInfo>> editableFields;
+        private Dictionary<WorldObjectDef, float> sectionHeights;
         private float prevHeight = float.MaxValue;
         private Vector2 scrollPos;
-        private Dictionary<WorldObjectDef, float> sectionHeights;
 
         public OutpostsMod(ModContentPack content) : base(content)
         {
             LongEventHandler.ExecuteWhenFinished(FindOutposts);
-            Settings = GetSettings<OutpostsSettings>();
+            Settings = base.GetSettings<OutpostsModSettings>();
             editableFields = new Dictionary<Type, List<FieldInfo>>();
-            foreach (var type in typeof(Outpost).AllSubclasses().Concat(typeof(Outpost)).Concat(typeof(OutpostExtension)).Concat(typeof(OutpostExtension).AllSubclasses()))
+
+            foreach (var type in GetAllOutpostTypes())
             {
-                editableFields[type] = new List<FieldInfo>();
+                var targets = new List<FieldInfo>();
+                editableFields[type] = targets;
                 foreach (var field in type.GetFields(AccessTools.all))
-                    if (field.HasAttribute<PostToSetingsAttribute>())
-                        editableFields[type].Add(field);
+                {
+                    if (field.HasAttribute<PostToSettingsAttribute>())
+                    {
+                        targets.Add(field);
+                    }
+                }
             }
         }
 
+        public static IEnumerable<Type> GetAllOutpostTypes()
+        {
+            yield return typeof(Outpost);
+            yield return typeof(OutpostExtension);
+
+            foreach (var type in typeof(Outpost).AllSubclasses())
+            {
+                yield return type;
+            }
+            
+            foreach (var type in typeof(OutpostExtension).AllSubclasses())
+            {
+                yield return type;
+            }
+        }
+
+        public static IEnumerable<WorldObjectDef> GetAllOutpostDefs()
+            => DefDatabase<WorldObjectDef>.AllDefs
+            .Where(def => typeof(Outpost).IsAssignableFrom(def.worldObjectClass));
+
         private void FindOutposts()
         {
-            Outposts = DefDatabase<WorldObjectDef>.AllDefs.Where(def => typeof(Outpost).IsAssignableFrom(def.worldObjectClass)).ToList();
-            Harm = new Harmony("vanillaexpanded.outposts");
-            sectionHeights = Outposts.ToDictionary(o => o, _ => float.MaxValue);
+            OutpostDefs = GetAllOutpostDefs().ToList();
+            sectionHeights = OutpostDefs.ToDictionary(outpostDef => outpostDef, _ => float.MaxValue);
             
-            if (Outposts.Any())
+            if (OutpostDefs.Any())
             {
-                HarmonyPatches.DoPatches();
+                HarmonyPatches.DoConditionalPatches();
                 Outposts_DefOf.VEF_OutpostDeliverySpot.designationCategory = DefDatabase<DesignationCategoryDef>.GetNamed("Misc");               
             }
-
         }
 
         public static void Notify_Spawned(Outpost outpost)
         {
-            Setup(outpost);
+            InitializeSettings(outpost);
         }
 
-        private static void Setup(Outpost outpost)
+        private static void InitializeSettings(Outpost outpost)
         {
             var settings = Settings.SettingsFor(outpost.def.defName);
-            foreach (var info in editableFields[outpost.GetType()])
-                if (info.TryGetAttribute<PostToSetingsAttribute>(out var attr))
-                    info.SetValue(outpost,
-                        settings.TryGet($"{info.DeclaringType.Name}.{info.Name}", info.FieldType, out var value) ? value : attr.Default ?? info.GetValue(outpost));
+            foreach (var field in editableFields[outpost.GetType()])
+            {
+                if (field.TryGetAttribute<PostToSettingsAttribute>(out var attr))
+                {
+                    var qualifiedName = $"{field.DeclaringType.Name}.{field.Name}";
+                    var get = settings.TryGetValue(qualifiedName, field.FieldType, out var value);
+                    field.SetValue(outpost, get ? value : attr.Default ?? field.GetValue(outpost));
+                }
+            }
 
-            foreach (var info in editableFields[outpost.Ext.GetType()])
-                if (info.TryGetAttribute<PostToSetingsAttribute>(out var attr))
-                    info.SetValue(outpost.Ext,
-                        settings.TryGet($"{info.DeclaringType.Name}.{info.Name}", info.FieldType, out var value) ? value : info.GetValue(outpost.Ext) ?? attr.Default);
+            foreach (var field in editableFields[outpost.Ext.GetType()])
+            {
+                if (field.TryGetAttribute<PostToSettingsAttribute>(out var attr))
+                {
+                    var label = $"{field.DeclaringType.Name}.{field.Name}";
+                    var get = settings.TryGetValue(label, field.FieldType, out var value);
+                    field.SetValue(outpost.Ext, get ? value : attr.Default ?? field.GetValue(outpost.Ext));
+                }
+            }
         }
 
         public static void Notify_Removed(Outpost outpost)
         {
         }
 
-        public override string SettingsCategory() => Outposts.Any() ? "Outposts.Settings.Title".Translate() : null;
+        public override string SettingsCategory() => OutpostDefs.Any() ? "Outposts.Settings.Title".Translate() : null;
 
         public override void DoSettingsWindowContents(Rect inRect)
         {
@@ -85,8 +120,11 @@ namespace Outposts
             listing.Label("Outposts.Settings.Multiplier.Time".Translate(Settings.TimeMultiplier.ToStringPercent()));
             Settings.TimeMultiplier = listing.Slider(Settings.TimeMultiplier, 0.01f, 5f);
             if (listing.ButtonTextLabeled("Outposts.Settings.DeliveryMethod".Translate(), $"Outposts.Settings.DeliveryMethod.{Settings.DeliveryMethod}".Translate()))
+            {
                 Find.WindowStack.Add(new FloatMenu(Enum.GetValues(typeof(DeliveryMethod)).OfType<DeliveryMethod>().Select(method => new FloatMenuOption(
                     $"Outposts.Settings.DeliveryMethod.{method}".Translate(), () => Settings.DeliveryMethod = method)).ToList()));
+            }
+
             listing.CheckboxLabeled("Outposts.Settings.DoRaids".Translate(), ref Settings.DoRaids);
             listing.Label("Outposts.Settings.RaidFrequency".Translate());
             listing.Label($"{Settings.raidTimeInterval.min.ToStringTicksToPeriodVerbose(false)} - {Settings.raidTimeInterval.max.ToStringTicksToPeriodVerbose(false)}");
@@ -96,31 +134,38 @@ namespace Outposts
 
             listing.GapLine();
 
-            static void DoSetting(Listing_Standard listing, OutpostsSettings.OutpostSettings settings, FieldInfo info, object obj = null)
+            static void DoSetting(Listing_Standard listing, OutpostsModSettings.OutpostSettings settings, FieldInfo info, object obj = null)
             {
-                if (info.TryGetAttribute<PostToSetingsAttribute>(out var attr))
+                if (info.TryGetAttribute<PostToSettingsAttribute>(out var attr))
                 {
                     var key = $"{info.DeclaringType.Name}.{info.Name}";
-                    var current = settings.TryGet(key, info.FieldType, out var value) ? value : obj is null ? attr.Default : info.GetValue(obj);
+                    var current = settings.TryGetValue(key, info.FieldType, out var value) ? value : obj is null ? attr.Default : info.GetValue(obj);
                     attr.Draw(listing, ref current);
                     if (current == attr.Default)
                     {
                         if (settings.Has(key)) settings.Remove(key);
                     }
                     else
+                    {
                         settings.Set(key, current);
+                    }
                 }
             }
 
-            foreach (var outpost in Outposts)
+            foreach (var outpost in OutpostDefs)
             {
                 var section = listing.BeginSection(sectionHeights[outpost]);
                 section.Label(outpost.LabelCap);
                 var settings = Settings.SettingsFor(outpost.defName);
                 foreach (var info in editableFields[outpost.worldObjectClass]) DoSetting(section, settings, info);
                 if (outpost.GetModExtension<OutpostExtension>() is { } ext)
+                {
                     foreach (var info in editableFields[ext.GetType()])
+                    {
                         DoSetting(section, settings, info, ext);
+                    }
+                }
+
                 sectionHeights[outpost] = section.CurHeight;
                 listing.EndSection(section);
                 listing.Gap();
@@ -134,171 +179,13 @@ namespace Outposts
         public override void WriteSettings()
         {
             base.WriteSettings();
-            if (Find.World?.worldObjects is not null)
-                foreach (var outpost in Find.World.worldObjects.AllWorldObjects.OfType<Outpost>())
-                    Setup(outpost);
-        }
-    }
-
-    public class PostToSetingsAttribute : Attribute
-    {
-        public enum DrawMode
-        {
-            Checkbox,
-            IntSlider,
-            Slider,
-            Percentage,
-            Time
-        }
-
-        private readonly object ignore;
-        private readonly float max;
-        private readonly float min;
-        private readonly bool shouldIgnore;
-
-        public object Default;
-
-        public string LabelKey;
-        public DrawMode Mode;
-        public string TooltipKey;
-
-        public PostToSetingsAttribute(string label, DrawMode mode, object value = null, float min = 0f, float max = 0f, string tooltip = null, object dontShowAt = null)
-        {
-            LabelKey = label;
-            Mode = mode;
-            Default = value;
-            this.min = min;
-            this.max = max;
-            TooltipKey = tooltip;
-            ignore = dontShowAt;
-            shouldIgnore = dontShowAt is not null;
-        }
-
-        public void Draw(Listing_Standard listing, ref object current)
-        {
-            if (shouldIgnore && Equals(current, ignore)) return;
-            switch (Mode)
+            if (Find.World?.worldObjects is WorldObjectsHolder holder)
             {
-                case DrawMode.Checkbox:
-                    var checkState = (bool) current;
-                    listing.CheckboxLabeled(LabelKey.Translate(), ref checkState, TooltipKey?.Translate());
-                    if (checkState != (bool) current) current = checkState;
-                    break;
-                case DrawMode.Slider:
-                    listing.Label(LabelKey.Translate() + ": " + current);
-                    current = listing.Slider((float) current, min, max);
-                    break;
-                case DrawMode.Percentage:
-                    listing.Label(LabelKey.Translate() + ": " + ((float) current).ToStringPercent());
-                    current = listing.Slider((float) current, min, max);
-                    break;
-                case DrawMode.IntSlider:
-                    listing.Label(LabelKey.Translate() + ": " + current);
-                    current = (int) listing.Slider((int) current, (int) min, (int) max);
-                    break;
-                case DrawMode.Time:
-                    listing.Label(LabelKey.Translate() + ": " + ((int) current).ToStringTicksToPeriodVerbose());
-                    current = (int) listing.Slider((int) current, GenDate.TicksPerHour, GenDate.TicksPerYear);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-        }
-    }
-
-    public class OutpostsSettings : ModSettings
-    {
-        public DeliveryMethod DeliveryMethod = DeliveryMethod.Teleport;
-        public bool DoRaids = true;
-        public float ProductionMultiplier = 1f;
-        public Dictionary<string, OutpostSettings> SettingsPerOutpost = new();
-        public float TimeMultiplier = 1f;
-        public float RaidDifficultyMultiplier = 1f;
-        public IntRange raidTimeInterval = new IntRange(GenDate.TicksPerQuadrum/2, GenDate.TicksPerQuadrum);
-
-
-        public OutpostSettings SettingsFor(string defName)
-        {
-            SettingsPerOutpost ??= new Dictionary<string, OutpostSettings>();
-            if (!SettingsPerOutpost.TryGetValue(defName, out var setting) || setting is null) SettingsPerOutpost.SetOrAdd(defName, setting = new OutpostSettings());
-            return setting;
-        }
-
-        public override void ExposeData()
-        {
-            base.ExposeData();
-            Scribe_Values.Look(ref ProductionMultiplier, "productionMultiplier", 1f);
-            Scribe_Values.Look(ref TimeMultiplier, "timeMultiplier", 1f);
-            Scribe_Values.Look(ref DeliveryMethod, "deliveryMethod");
-            Scribe_Collections.Look(ref SettingsPerOutpost, "settingsPerOutpost", LookMode.Value, LookMode.Deep);
-            Scribe_Values.Look(ref DoRaids, "doRaids", true);
-            Scribe_Values.Look(ref RaidDifficultyMultiplier, "RaidDifficultyMultiplier",1f);
-            
-            int RaidMinDays = raidTimeInterval.min;
-            int RaidMaxDays = raidTimeInterval.max;
-            Scribe_Values.Look(ref RaidMinDays, "RaidMinDays",600000);
-            Scribe_Values.Look(ref RaidMaxDays, "RaidMaxDays",1800000);
-            raidTimeInterval = new IntRange(RaidMinDays, RaidMaxDays);
-        }
-
-        public class OutpostSettings : IExposable
-        {
-            private Dictionary<string, string> dictionary = new();
-
-            public void ExposeData()
-            {
-                Scribe_Collections.Look(ref dictionary, "keysToValues", LookMode.Value, LookMode.Value);
-            }
-
-            public bool Has(string key) => dictionary.ContainsKey(key);
-            public void Remove(string key) => dictionary.Remove(key);
-
-            public bool TryGet(string key, Type type, out object value)
-            {
-                dictionary ??= new Dictionary<string, string>();
-                if (Has(key))
+                foreach (var outpost in holder.AllWorldObjects.OfType<Outpost>())
                 {
-                    value = ParseHelper.FromString(dictionary[key], type);
-                    return true;
+                    InitializeSettings(outpost);
                 }
-
-                value = null;
-                return false;
-            }
-
-            public void Set(string key, object value)
-            {
-                dictionary.SetOrAdd(key, value.ToString());
             }
         }
-    }
-
-    [DefOf]
-    public class Outposts_DefOf
-    {
-        public static ThingDef VEF_OutpostDeliverySpot;
-        public static DutyDef VEF_DropAllInInventory;
-        public static ResearchProjectDef TransportPod;
-        public static IncidentDef VEF_OutpostAttacked;
-    }
-
-    public enum DeliveryMethod
-    {
-        Teleport,
-        PackAnimal,
-        Store,
-        ForcePods,
-        PackOrPods
-    }
-
-    [StaticConstructorOnStartup]
-    public static class TexOutposts
-    {
-        public static readonly Texture2D PackTex = ContentFinder<Texture2D>.Get("UI/Gizmo/AbandonOutpost");
-        public static readonly Texture2D AddTex = ContentFinder<Texture2D>.Get("UI/Gizmo/AddToOutpost");
-        public static readonly Texture2D RemoveTex = ContentFinder<Texture2D>.Get("UI/Gizmo/RemovePawnFromOutpost");
-        public static readonly Texture2D StopPackTex = ContentFinder<Texture2D>.Get("UI/Gizmo/CancelAbandonOutpost");
-        public static readonly Texture2D RemoveItemsTex = ContentFinder<Texture2D>.Get("UI/Gizmo/RemoveItemsFromOutpost");
-        public static readonly Texture2D CreateTex = ContentFinder<Texture2D>.Get("UI/Gizmo/SetUpOutpost");
     }
 }

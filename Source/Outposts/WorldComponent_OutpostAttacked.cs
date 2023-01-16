@@ -9,14 +9,16 @@ using Verse;
 
 namespace Outposts
 {
+    // Adapated from Sarg's Roaming Monstosities  .
     public class WorldComponent_OutpostAttacked: WorldComponent
     {
-        //Adapated from Sarg's Raoming Monstosities    
         public int tickCounter;
         public int ticksToNextAssault = OutpostsMod.Settings.raidTimeInterval.RandomInRange;
+
         public WorldComponent_OutpostAttacked(World world) : base(world)
         {
         }
+
         public override void WorldComponentTick()
         {
             base.WorldComponentTick();
@@ -41,6 +43,7 @@ namespace Outposts
                 }
             }
         }
+
         public override void ExposeData()
         {
             base.ExposeData();

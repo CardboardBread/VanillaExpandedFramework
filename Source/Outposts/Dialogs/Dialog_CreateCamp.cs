@@ -23,12 +23,12 @@ namespace Outposts
             doWindowBackground = true;
             this.creator = creator;
             validity = new Dictionary<WorldObjectDef, Pair<string, string>>();
-            foreach (var outpost in OutpostsMod.Outposts)
+            foreach (var outpost in OutpostsMod.OutpostDefs)
             {
                 var method = outpost.worldObjectClass.GetMethod("CanSpawnOnWith", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 var method2 = outpost.worldObjectClass.GetMethod("RequirementsString", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
                 var ext = outpost.GetModExtension<OutpostExtension>();
-                var valid = ext?.CanSpawnOnWithExt(creator.Tile, creator.HumanColonists()) ??
+                var valid = ext?.CanSpawnOnTile(creator.Tile, creator.HumanColonists()) ??
                             (string) method?.Invoke(null, new object[] {creator.Tile, creator.HumanColonists()});
                 var tip = (ext?.RequirementsStringBase(creator.Tile, creator.HumanColonists()) ?? "" +
                     ((string) method2?.Invoke(null, new object[] {creator.Tile, creator.HumanColonists()}) ?? "")).TrimEndNewlines();
@@ -43,10 +43,10 @@ namespace Outposts
         {
             var outRect = inRect.ContractedBy(5f);
             outRect.height -= 45f;
-            var viewRect = new Rect(0, 0, outRect.width - 50f, prevHeight ?? OutpostsMod.Outposts.Count * (LINE_HEIGHT + 10));
+            var viewRect = new Rect(0, 0, outRect.width - 50f, prevHeight ?? OutpostsMod.OutpostDefs.Count * (LINE_HEIGHT + 10));
             Widgets.BeginScrollView(outRect, ref scrollPosition, viewRect);
             var rect = new Rect(10, 0, viewRect.width, LINE_HEIGHT);
-            foreach (var outpost in OutpostsMod.Outposts)
+            foreach (var outpost in OutpostsMod.OutpostDefs)
             {
                 DoOutpostDisplay(ref rect, outpost);
                 rect.y += rect.height + 5f;

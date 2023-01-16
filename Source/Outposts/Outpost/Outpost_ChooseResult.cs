@@ -17,9 +17,9 @@ namespace Outposts
         {
             return base.GetGizmos().Append(new Command_Action
             {
-                action = () => Find.WindowStack.Add(new FloatMenu(Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).Select(ro => ro.MinSkills?.SatisfiedBy(CapablePawns) ?? true
+                action = () => Find.WindowStack.Add(new FloatMenu(Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).Select(ro => ro.MinAmountsPerSkills?.SatisfiedBy(CapablePawns) ?? true
                         ? new FloatMenuOption(ro.Explain(CapablePawns.ToList()), () => choice = ro.Thing, ro.Thing)
-                        : new FloatMenuOption(ro.Explain(CapablePawns.ToList()) + " - " + "Outposts.SkillTooLow".Translate(ro.MinSkills.Max(abs => abs.Count)), null, ro.Thing))
+                        : new FloatMenuOption(ro.Explain(CapablePawns.ToList()) + " - " + "Outposts.SkillTooLow".Translate(ro.MinAmountsPerSkills.Max(abs => abs.Count)), null, ro.Thing))
                     .ToList())),
                 defaultLabel = ChooseExt.ChooseLabel.Formatted(choice.label),
                 defaultDesc = ChooseExt.ChooseDesc,
@@ -30,11 +30,11 @@ namespace Outposts
         public override void RecachePawnTraits()
         {
             base.RecachePawnTraits();
-            choice ??= Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).MinBy(ro => ro.MinSkills?.Sum(abs => abs.Count) ?? 0f).Thing;
-            if (ResultOptions.FirstOrDefault(ro => !(ro.MinSkills?.SatisfiedBy(CapablePawns) ?? true)) is {Thing: {label: var produced}})
+            choice ??= Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).MinBy(ro => ro.MinAmountsPerSkills?.Sum(abs => abs.Count) ?? 0f).Thing;
+            if (ResultOptions.FirstOrDefault(ro => !(ro.MinAmountsPerSkills?.SatisfiedBy(CapablePawns) ?? true)) is {Thing: {label: var produced}})
             {
                 Messages.Message("Outposts.SkillChange".Translate(Name, produced), this, MessageTypeDefOf.NegativeEvent);
-                choice = Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).MinBy(ro => ro.MinSkills?.Sum(abs => abs.Count) ?? 0f).Thing;
+                choice = Ext.ResultOptions.OrEmpty().Concat(GetExtraOptions()).MinBy(ro => ro.MinAmountsPerSkills?.Sum(abs => abs.Count) ?? 0f).Thing;
             }
         }
 
