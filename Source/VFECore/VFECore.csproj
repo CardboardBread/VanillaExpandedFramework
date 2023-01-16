@@ -492,6 +492,8 @@
     <Compile Include="AnimalBehaviours\Hediffs\Properties\HediffCompProperties_StageByPsylink.cs" />
     <Compile Include="AnimalBehaviours\Hediffs\Properties\HediffCompProperties_StageByTemperature.cs" />
     <Compile Include="AnimalBehaviours\ReflectionCache\ReflectionCache.cs" />
+    <Compile Include="Genes\Harmony\Gene_Active_Patch.cs" />
+    <Compile Include="VFECore\Buildings\Building_AutoDoorLockable.cs" />
     <Compile Include="Furniture\Dialogs\Dialog_ChooseGraphic.cs" />
     <Compile Include="Furniture\ReflectionCache\ReflectionCache.cs" />
     <Compile Include="Genes\Comps\CompHumanHatcher.cs" />
@@ -948,7 +950,6 @@
     <Compile Include="VFECore\HarmonyPatches\SpecificPatches\Patch_ThingDef.cs" />
     <Compile Include="VFECore\HarmonyPatches\SpecificPatches\Patch_TraderCaravanUtility.cs" />
     <Compile Include="VFECore\HarmonyPatches\Verb_Patches.cs" />
-    <Compile Include="VFECore\HarmonyPatches\SpecificPatches\PickUpAndHaul_Patch.cs" />
     <Compile Include="VFECore\HarmonyPatches\ModCompatibility\RimCities\Patch_Cities_GenCity.cs" />
     <Compile Include="VFECore\HarmonyPatches\ModCompatibility\RPGStyleInventory\Patch_RPG_GearTab.cs" />
     <Compile Include="VFECore\HarmonyPatches\ModCompatibility\RunAndGun\Patch_RunAndGun_Harmony_Verb_TryCastNextBurstShot.cs" />
